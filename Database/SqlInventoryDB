@@ -1,0 +1,272 @@
+CREATE TABLE Roles
+(
+    RoleID INT IDENTITY(1,1) PRIMARY KEY,
+    RoleName NVARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE Branches
+(
+    BranchID INT IDENTITY(1,1) PRIMARY KEY,
+    BranchName NVARCHAR(50) NOT NULL UNIQUE,
+    City NVARCHAR(40) NOT NULL,
+    IsActive BIT NOT NULL DEFAULT 1
+);
+
+CREATE TABLE Users
+(
+    UserID INT IDENTITY(1,1) PRIMARY KEY,
+    FirstName NVARCHAR(30) NOT NULL,
+    LastName NVARCHAR(30) NOT NULL,
+    Email NVARCHAR(100) NOT NULL UNIQUE,
+    PasswordHash NVARCHAR(256) NOT NULL,
+    RoleID INT NOT NULL,
+    BranchID INT NULL,
+    IsActive BIT NOT NULL DEFAULT 1,
+    CreatedAt DATETIME NOT NULL DEFAULT SYSDATETIME(),
+    MustChangePassword BIT NOT NULL DEFAULT 0,
+    CONSTRAINT FK_Users_Roles FOREIGN KEY (RoleID) REFERENCES Roles(RoleID),
+    CONSTRAINT FK_Users_Branches FOREIGN KEY (BranchID) REFERENCES Branches(BranchID)
+);
+
+CREATE TABLE Suppliers
+(
+    SupplierID INT IDENTITY(1,1) PRIMARY KEY,
+    SupplierName NVARCHAR(100) NOT NULL,
+    Phone NVARCHAR(25) NOT NULL,
+    IsActive BIT NOT NULL DEFAULT 1
+);
+
+CREATE TABLE Categories
+(
+    CategoryID INT IDENTITY(1,1) PRIMARY KEY,
+    CategoryName NVARCHAR(100) NOT NULL UNIQUE
+);
+
+CREATE TABLE Products
+(
+    ProductID INT IDENTITY(1,1) PRIMARY KEY,
+    ProductName NVARCHAR(100) NOT NULL,
+    SKU NVARCHAR(50) NOT NULL UNIQUE,
+    ProductionDate DATE NULL,
+    ExpiryDate DATE NULL,
+    Price DECIMAL(18,2) NOT NULL DEFAULT 0,
+    CategoryID INT NULL,
+    SupplierID INT NOT NULL,
+    IsActive BIT NOT NULL DEFAULT 1,
+    CONSTRAINT FK_Products_Categories FOREIGN KEY (CategoryID) REFERENCES Categories(CategoryID),
+    CONSTRAINT FK_Products_Suppliers FOREIGN KEY (SupplierID) REFERENCES Suppliers(SupplierID),
+    CONSTRAINT CHK_Products_Price CHECK (Price >= 0),
+    CONSTRAINT CHK_Products_Dates CHECK (ExpiryDate IS NULL OR ProductionDate IS NULL OR ExpiryDate >= ProductionDate)
+);
+
+CREATE TABLE BranchInventory
+(
+    BranchInventoryID INT IDENTITY(1,1) PRIMARY KEY,
+    BranchID INT NOT NULL,
+    ProductID INT NOT NULL,
+    Quantity DECIMAL(18,3) NOT NULL DEFAULT 0,
+    ReorderLimit DECIMAL(18,3) NOT NULL DEFAULT 0,
+    LastUpdated DATETIME NULL,
+    CONSTRAINT UQ_BranchInventory_Branch_Product UNIQUE (BranchID, ProductID),
+    CONSTRAINT FK_BranchInventory_Branches FOREIGN KEY (BranchID) REFERENCES Branches(BranchID),
+    CONSTRAINT FK_BranchInventory_Products FOREIGN KEY (ProductID) REFERENCES Products(ProductID),
+    CONSTRAINT CHK_BranchInventory_Quantity CHECK (Quantity >= 0),
+    CONSTRAINT CHK_BranchInventory_ReorderLimit CHECK (ReorderLimit >= 0)
+);
+
+CREATE TABLE StockAdjustments
+(
+    AdjustmentID INT IDENTITY(1,1) PRIMARY KEY,
+    BranchID INT NOT NULL,
+    ProductID INT NOT NULL,
+    UserID INT NOT NULL,
+    AdjustmentType TINYINT NOT NULL
+        CONSTRAINT CHK_StockAdjustments_Type CHECK (AdjustmentType BETWEEN 1 AND 2),
+    QuantityChange DECIMAL(18,3) NOT NULL
+        CONSTRAINT CHK_StockAdjustments_Change CHECK (QuantityChange <> 0),
+    Reason NVARCHAR(250) NULL,
+    AdjustmentDate DATETIME NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT FK_StockAdjustments_Branches FOREIGN KEY (BranchID) REFERENCES Branches(BranchID),
+    CONSTRAINT FK_StockAdjustments_Products FOREIGN KEY (ProductID) REFERENCES Products(ProductID),
+    CONSTRAINT FK_StockAdjustments_Users FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
+
+CREATE TABLE PurchaseInvoices
+(
+    PurchaseInvoiceID INT IDENTITY(1,1) PRIMARY KEY,
+    SupplierID INT NOT NULL,
+    BranchID INT NOT NULL,
+    CreatedByUserID INT NOT NULL,
+    InvoiceDate DATETIME NOT NULL DEFAULT SYSDATETIME(),
+    TotalAmount DECIMAL(18,2) NOT NULL DEFAULT 0,
+    CONSTRAINT FK_PurchaseInvoices_Suppliers FOREIGN KEY (SupplierID) REFERENCES Suppliers(SupplierID),
+    CONSTRAINT FK_PurchaseInvoices_Branches FOREIGN KEY (BranchID) REFERENCES Branches(BranchID),
+    CONSTRAINT FK_PurchaseInvoices_Users FOREIGN KEY (CreatedByUserID) REFERENCES Users(UserID),
+    CONSTRAINT CHK_PurchaseInvoices_Total CHECK (TotalAmount >= 0)
+);
+
+CREATE TABLE PurchaseDetails
+(
+    DetailID INT IDENTITY(1,1) PRIMARY KEY,
+    PurchaseInvoiceID INT NOT NULL,
+    ProductID INT NOT NULL,
+    Quantity DECIMAL(18,3) NOT NULL,
+    UnitCost DECIMAL(18,2) NOT NULL,
+    CONSTRAINT FK_PurchaseDetails_Invoices FOREIGN KEY (PurchaseInvoiceID) REFERENCES PurchaseInvoices(PurchaseInvoiceID),
+    CONSTRAINT FK_PurchaseDetails_Products FOREIGN KEY (ProductID) REFERENCES Products(ProductID),
+    CONSTRAINT CHK_PurchaseDetails_Qty CHECK (Quantity > 0),
+    CONSTRAINT CHK_PurchaseDetails_Cost CHECK (UnitCost >= 0)
+);
+
+CREATE TABLE SaleInvoices
+(
+    SaleInvoiceID INT IDENTITY(1,1) PRIMARY KEY,
+    BranchID INT NOT NULL,
+    CreatedByUserID INT NOT NULL,
+    InvoiceDate DATETIME NOT NULL DEFAULT SYSDATETIME(),
+    TotalAmount DECIMAL(18,2) NOT NULL DEFAULT 0,
+    Status TINYINT NOT NULL DEFAULT 1
+        CONSTRAINT CHK_SaleInvoices_Status CHECK (Status BETWEEN 1 AND 3),
+    CONSTRAINT FK_SaleInvoices_Branches FOREIGN KEY (BranchID) REFERENCES Branches(BranchID),
+    CONSTRAINT FK_SaleInvoices_Users FOREIGN KEY (CreatedByUserID) REFERENCES Users(UserID),
+    CONSTRAINT CHK_SaleInvoices_Total CHECK (TotalAmount >= 0)
+);
+
+CREATE TABLE SaleDetails
+(
+    SaleDetailID INT IDENTITY(1,1) PRIMARY KEY,
+    SaleInvoiceID INT NOT NULL,
+    ProductID INT NOT NULL,
+    Quantity DECIMAL(18,3) NOT NULL,
+    UnitPrice DECIMAL(18,2) NOT NULL,
+    CONSTRAINT FK_SaleDetails_Invoices FOREIGN KEY (SaleInvoiceID) REFERENCES SaleInvoices(SaleInvoiceID),
+    CONSTRAINT FK_SaleDetails_Products FOREIGN KEY (ProductID) REFERENCES Products(ProductID),
+    CONSTRAINT CHK_SaleDetails_Qty CHECK (Quantity > 0),
+    CONSTRAINT CHK_SaleDetails_Price CHECK (UnitPrice >= 0)
+);
+
+CREATE TABLE BranchTransfers
+(
+    TransferID INT IDENTITY(1,1) PRIMARY KEY,
+    SourceBranchID INT NOT NULL,
+    TargetBranchID INT NOT NULL,
+    RequestedByUserID INT NOT NULL,
+    RequestDate DATETIME NOT NULL DEFAULT SYSDATETIME(),
+    ApprovedByUserID INT NULL,
+    ApprovedDate DATETIME NULL,
+    ExecutedByUserID INT NULL,
+    ExecutedDate DATETIME NULL,
+    Status TINYINT NOT NULL DEFAULT 1
+        CONSTRAINT CHK_BranchTransfers_Status CHECK (Status BETWEEN 1 AND 5),
+    CONSTRAINT FK_BranchTransfers_SourceBranch FOREIGN KEY (SourceBranchID) REFERENCES Branches(BranchID),
+    CONSTRAINT FK_BranchTransfers_TargetBranch FOREIGN KEY (TargetBranchID) REFERENCES Branches(BranchID),
+    CONSTRAINT FK_BranchTransfers_RequestedBy FOREIGN KEY (RequestedByUserID) REFERENCES Users(UserID),
+    CONSTRAINT FK_BranchTransfers_ApprovedBy FOREIGN KEY (ApprovedByUserID) REFERENCES Users(UserID),
+    CONSTRAINT FK_BranchTransfers_ExecutedBy FOREIGN KEY (ExecutedByUserID) REFERENCES Users(UserID),
+    CONSTRAINT CHK_BranchTransfers_DifferentBranches CHECK (SourceBranchID <> TargetBranchID)
+);
+
+CREATE TABLE TransferDetails
+(
+    TransferDetailID INT IDENTITY(1,1) PRIMARY KEY,
+    TransferID INT NOT NULL,
+    ProductID INT NOT NULL,
+    Quantity DECIMAL(18,3) NOT NULL,
+    CONSTRAINT FK_TransferDetails_Transfers FOREIGN KEY (TransferID) REFERENCES BranchTransfers(TransferID),
+    CONSTRAINT FK_TransferDetails_Products FOREIGN KEY (ProductID) REFERENCES Products(ProductID),
+    CONSTRAINT CHK_TransferDetails_Qty CHECK (Quantity > 0)
+);
+
+CREATE TABLE InventoryTransactions
+(
+    TransactionID INT IDENTITY(1,1) PRIMARY KEY,
+    BranchID INT NOT NULL,
+    ProductID INT NOT NULL,
+    UserID INT NOT NULL,
+    TransactionType TINYINT NOT NULL
+        CONSTRAINT CHK_InventoryTransactions_Type CHECK (TransactionType BETWEEN 1 AND 7),
+    QuantityChange DECIMAL(18,3) NOT NULL,
+    ReferenceID INT NULL,
+    TransactionDate DATETIME NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT FK_InventoryTransactions_Branches FOREIGN KEY (BranchID) REFERENCES Branches(BranchID),
+    CONSTRAINT FK_InventoryTransactions_Products FOREIGN KEY (ProductID) REFERENCES Products(ProductID),
+    CONSTRAINT FK_InventoryTransactions_Users FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
+CREATE TABLE SaleReturns
+(
+    ReturnID INT IDENTITY(1,1) PRIMARY KEY,
+    SaleInvoiceID INT NOT NULL,
+    BranchID INT NOT NULL,
+    CreatedByUserID INT NOT NULL,
+    ReturnDate DATETIME NOT NULL DEFAULT SYSDATETIME(),
+    TotalAmount DECIMAL(18,2) NOT NULL DEFAULT 0,
+    Reason NVARCHAR(250) NULL,
+    CONSTRAINT FK_SaleReturns_SaleInvoices FOREIGN KEY (SaleInvoiceID) REFERENCES SaleInvoices(SaleInvoiceID),
+    CONSTRAINT FK_SaleReturns_Branches FOREIGN KEY (BranchID) REFERENCES Branches(BranchID),
+    CONSTRAINT FK_SaleReturns_Users FOREIGN KEY (CreatedByUserID) REFERENCES Users(UserID),
+    CONSTRAINT CHK_SaleReturns_Total CHECK (TotalAmount >= 0)
+);
+
+CREATE TABLE SaleReturnDetails
+(
+    ReturnDetailID INT IDENTITY(1,1) PRIMARY KEY,
+    ReturnID INT NOT NULL,
+    ProductID INT NOT NULL,
+    Quantity DECIMAL(18,3) NOT NULL,
+    UnitPrice DECIMAL(18,2) NOT NULL,
+    CONSTRAINT FK_SaleReturnDetails_Returns FOREIGN KEY (ReturnID) REFERENCES SaleReturns(ReturnID),
+    CONSTRAINT FK_SaleReturnDetails_Products FOREIGN KEY (ProductID) REFERENCES Products(ProductID),
+    CONSTRAINT CHK_SaleReturnDetails_Qty CHECK (Quantity > 0),
+    CONSTRAINT CHK_SaleReturnDetails_Price CHECK (UnitPrice >= 0)
+);
+
+CREATE TABLE AuditLog
+(
+    AuditID INT IDENTITY(1,1) PRIMARY KEY,
+    UserID INT NOT NULL,
+    Action NVARCHAR(50) NOT NULL,
+    TableName NVARCHAR(100) NOT NULL,
+    RecordID INT NULL,
+    OldValues NVARCHAR(MAX) NULL,
+    NewValues NVARCHAR(MAX) NULL,
+    ActionDate DATETIME NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT FK_AuditLog_Users FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
+
+CREATE TABLE ErrorLog
+(
+    ErrorID INT IDENTITY(1,1) PRIMARY KEY,
+    ErrorNumber INT NULL,
+    ErrorMessage NVARCHAR(4000) NULL,
+    ProcedureName NVARCHAR(128) NULL,
+    ErrorLine INT NULL,
+    UserID INT NULL,
+    ErrorDate DATETIME NOT NULL DEFAULT SYSDATETIME(),
+    CONSTRAINT FK_ErrorLog_Users FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
+
+SET IDENTITY_INSERT Roles ON;
+INSERT INTO Roles (RoleID, RoleName) VALUES
+(1, 'GeneralManager'),
+(2, 'BranchManager'),
+(3, 'WarehouseClerk'),
+(4, 'SalesStaff');
+SET IDENTITY_INSERT Roles OFF;
+
+INSERT INTO Categories (CategoryName) VALUES
+('Food'),
+('Beverages'),
+('CleaningSupplies'),
+('HouseholdItems');
+
+
+CREATE INDEX IX_SaleInvoices_Branch_Date
+ON SaleInvoices (BranchID, InvoiceDate);
+
+CREATE INDEX IX_PurchaseInvoices_Branch_Date
+ON PurchaseInvoices (BranchID, InvoiceDate);
+
+CREATE INDEX IX_InventoryTransactions_Branch_Product_Date
+ON InventoryTransactions (BranchID, ProductID, TransactionDate);
+CREATE INDEX IX_SaleReturns_Invoice
+ON SaleReturns (SaleInvoiceID);
